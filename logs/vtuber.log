@@ -1,0 +1,23 @@
+2024-10-02 17:22:19 - Starting Graduatcion_projectApplication using Java 17.0.1 on DESKTOP-EQBTQV8 with PID 6056 (C:\Users\lold2\Desktop\Graduaction_project\build\classes\java\main started by lold2 in C:\Users\lold2\Desktop\Graduaction_project)
+2024-10-02 17:22:19 - No active profile set, falling back to 1 default profile: "default"
+2024-10-02 17:22:19 - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2024-10-02 17:22:19 - Finished Spring Data repository scanning in 41 ms. Found 3 JPA repository interfaces.
+2024-10-02 17:22:20 - Tomcat initialized with port(s): 8080 (http)
+2024-10-02 17:22:20 - Starting service [Tomcat]
+2024-10-02 17:22:20 - Starting Servlet engine: [Apache Tomcat/9.0.68]
+2024-10-02 17:22:20 - Initializing Spring embedded WebApplicationContext
+2024-10-02 17:22:20 - Root WebApplicationContext: initialization completed in 1097 ms
+2024-10-02 17:22:20 - HHH000204: Processing PersistenceUnitInfo [name: default]
+2024-10-02 17:22:20 - HHH000412: Hibernate ORM core version 5.6.12.Final
+2024-10-02 17:22:20 - HCANN000001: Hibernate Commons Annotations {5.1.2.Final}
+2024-10-02 17:22:20 - HikariPool-1 - Starting...
+2024-10-02 17:22:21 - HikariPool-1 - Start completed.
+2024-10-02 17:22:21 - HHH000400: Using dialect: org.hibernate.dialect.MySQL8Dialect
+2024-10-02 17:22:21 - HHH000490: Using JtaPlatform implementation: [org.hibernate.engine.transaction.jta.platform.internal.NoJtaPlatform]
+2024-10-02 17:22:21 - Initialized JPA EntityManagerFactory for persistence unit 'default'
+2024-10-02 17:22:22 - spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2024-10-02 17:22:22 - Tomcat started on port(s): 8080 (http) with context path ''
+2024-10-02 17:22:22 - Started Graduatcion_projectApplication in 3.609 seconds (JVM running for 4.111)
+2024-10-02 17:22:40 - Closing JPA EntityManagerFactory for persistence unit 'default'
+2024-10-02 17:22:40 - HikariPool-1 - Shutdown initiated...
+2024-10-02 17:22:40 - HikariPool-1 - Shutdown completed.
