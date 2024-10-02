@@ -1,0 +1,36 @@
+/* 전체 레이아웃을 8:2 비율로 나누는 스타일 */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-x: hidden; /* 가로 스크롤 방지 */
+}
+
+.main-layout {
+  display: flex;
+  flex-grow: 1;
+  overflow-x: hidden; /* 가로 스크롤 방지 */
+  width: 100%; /* 레이아웃의 너비를 100%로 설정 */
+  box-sizing: border-box; /* 패딩과 보더를 너비 계산에 포함 */
+}
+
+/* 왼쪽 8 부분 - 페이지 콘텐츠 */
+.content {
+  flex: 8;
+  padding: 20px;
+  background-color: #f5f5f5;
+  overflow-y: auto; /* 세로 스크롤 가능하게 설정 */
+  box-sizing: border-box; /* 패딩이 너비에 포함되도록 설정 */
+}
+
+/* 오른쪽 2 부분 - 순위표 */
+.sidebar {
+  flex: 2;
+  background-color: #fff;
+  border-left: 1px solid #ddd;
+  padding: 20px;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+  overflow-y: auto; /* 순위표가 많아질 경우 세로 스크롤 */
+  overflow-x: hidden; /* 가로 스크롤 방지 */
+  box-sizing: border-box; /* 패딩이 너비에 포함되도록 설정 */
+}
