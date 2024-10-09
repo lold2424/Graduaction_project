@@ -12,12 +12,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import javax.transaction.Transactional;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
@@ -213,6 +215,60 @@ public class UploadVtuberService {
         return partitions;
     }
 
+    // 유튜브 프로필 사진 미적용된거 일괄 db에 적용하는 코드
+    @Transactional
+    public void updateMissingProfileImages() {
+        List<VtuberEntity> vtubersWithMissingImages = vtuberRepository.findByChannelImgIsNull();
+        logger.info("Found " + vtubersWithMissingImages.size() + " vtubers with missing profile images.");
+
+        ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(5); // 멀티스레딩을 사용하여 API 호출
+
+        for (VtuberEntity vtuber : vtubersWithMissingImages) {
+            executor.submit(() -> {
+                String imageUrl = fetchChannelProfileImage(vtuber.getChannelId());
+                if (imageUrl != null && !imageUrl.isEmpty()) {
+                    vtuber.setChannelImg(imageUrl);
+                    vtuberRepository.save(vtuber);
+                    logger.info("Updated profile image for channel: " + vtuber.getName());
+                } else {
+                    logger.warning("Failed to fetch image for channel: " + vtuber.getName());
+                }
+            });
+        }
+
+        executor.shutdown();
+        try {
+            executor.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            logger.severe("Thread interrupted: " + e.getMessage());
+        }
+    }
+
+    private String fetchChannelProfileImage(String channelId) {
+        try {
+            YouTube.Channels.List channelsList = youTube.channels().list("snippet");
+            channelsList.setId(channelId);
+            channelsList.setKey(apiKeys.get(currentKeyIndex));
+            channelsList.setFields("items(snippet/thumbnails/default/url)");
+            ChannelListResponse response = channelsList.execute();
+
+            List<Channel> channels = response.getItems();
+            if (!channels.isEmpty() && channels.get(0).getSnippet().getThumbnails() != null) {
+                return channels.get(0).getSnippet().getThumbnails().getDefault().getUrl();
+            }
+        } catch (Exception e) {
+            logger.warning("Failed to fetch channel image for channel ID: " + channelId + " - " + e.getMessage());
+            currentKeyIndex = (currentKeyIndex + 1) % apiKeys.size(); // Rotate API key if there's an issue
+        }
+        return null;
+    }
+
+    @Scheduled(cron = "0 33 15 * * ?")  // 매일 새벽 1시에 실행
+    public void scheduledUpdateMissingProfileImages() {
+        updateMissingProfileImages();
+    }
+
+    /* 최초 버튜버 업데이트시만 사용
     @Scheduled(cron = "0 0 0 * * ?", zone = "Asia/Seoul")
     public void scheduledFetchAndSaveVtuberChannels() {
         fetchAndSaveVtuberChannels();
@@ -224,5 +280,6 @@ public class UploadVtuberService {
         vtuberEntity.setAddedTime(LocalDateTime.now());
         return vtuberRepository.save(vtuberEntity);
     }
+     */
 
 }

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.time.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.logging.Logger;
@@ -24,6 +25,7 @@ public class UpdateVtuberSongsService {
     private final VtuberRepository vtuberRepository;
     private final VtuberSongsRepository vtuberSongsRepository;
     private final List<String> apiKeys;
+    private final List<Boolean> keyUsage;
     private int currentKeyIndex = 0;
     private static final Logger logger = Logger.getLogger(UpdateVtuberSongsService.class.getName());
 
@@ -34,22 +36,29 @@ public class UpdateVtuberSongsService {
         this.youTube = youTube;
         this.vtuberRepository = vtuberRepository;
         this.vtuberSongsRepository = vtuberSongsRepository;
-        this.apiKeys = apiKeys;
-    }
-
-    @Scheduled(cron = "0 26 15 * * ?", zone = "Asia/Seoul")
-    public void fetchRecentVtuberSongs() {
-        List<VtuberEntity> vtubers = vtuberRepository.findAll();
-        LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
-
-        for (VtuberEntity vtuber : vtubers) {
-            fetchRecentSongsFromSearch(vtuber.getChannelId(), vtuber.getName(), threeDaysAgo);
+        this.apiKeys = new ArrayList<>(apiKeys);
+        this.keyUsage = new ArrayList<>(apiKeys.size());
+        // keyUsage 리스트의 크기와 값 초기화
+        for (int i = 0; i < apiKeys.size(); i++) {
+            this.keyUsage.add(true); // 모든 키를 처음엔 사용 가능으로 설정
         }
     }
 
-    private void fetchRecentSongsFromSearch(String channelId, String channelName, LocalDateTime threeDaysAgo) {
+
+    @Scheduled(cron = "0 5 0 * * ?", zone = "Asia/Seoul")
+    public void fetchRecentVtuberSongs() {
+        List<VtuberEntity> vtubers = vtuberRepository.findAll();
+        Instant oneDayAgoInstant = LocalDateTime.now().minusDays(1).toInstant(ZoneOffset.UTC); // 현재 시간에서 하루를 빼고 Instant로 변환
+
+        for (VtuberEntity vtuber : vtubers) {
+            fetchRecentSongsFromSearch(vtuber.getChannelId(), vtuber.getName(), oneDayAgoInstant);
+        }
+    }
+
+    private void fetchRecentSongsFromSearch(String channelId, String channelName, Instant oneDayAgoInstant) {
         String combinedQuery = "music|cover|original|official";
         String pageToken = null;
+        int keyAttempt = 0;
 
         do {
             try {
@@ -58,22 +67,49 @@ public class UpdateVtuberSongsService {
                 search.setQ(combinedQuery);
                 search.setType("video");
                 search.setOrder("date");
-                search.setFields("nextPageToken,items(id/videoId,snippet/title,snippet/description,snippet/publishedAt,snippet/channelId)");
-                search.setMaxResults(20L);
+                search.setFields("nextPageToken,items(id/videoId,snippet/title,snippet/publishedAt,snippet/channelId)");
+                search.setMaxResults(30L);
                 search.setKey(apiKeys.get(currentKeyIndex));
                 search.setPageToken(pageToken);
 
+                // publishedAfter 파라미터를 설정하여 검색 범위를 최근 1일 이내로 제한
+                search.setPublishedAfter(new com.google.api.client.util.DateTime(oneDayAgoInstant.toEpochMilli()));
+
                 SearchListResponse searchResponse = search.execute();
                 List<SearchResult> searchResults = searchResponse.getItems();
-                handleSearchResults(searchResults, channelName, threeDaysAgo);
+                handleSearchResults(searchResults, channelName);  // publishedAt 확인 필요 없음
 
                 pageToken = searchResponse.getNextPageToken();
             } catch (IOException e) {
-                logger.severe("API 호출 중 오류 발생: " + e.getMessage());
+                logger.severe("API 호출 중 오류 발생 - 채널명: " + channelName + ", 채널 ID: " + channelId + " - 오류 메시지: " + e.getMessage());
+                keyUsage.set(currentKeyIndex, false);  // 현재 키가 사용 불가능하다고 표시
+                keyAttempt++;
+                if (keyAttempt >= apiKeys.size()) {
+                    logger.severe("모든 API 키의 할당량 소진됨. 작업 종료. 마지막 작업 버튜버: " + channelName + " (" + channelId + ")");
+                    return;  // 모든 키의 할당량 소진 시 종료
+                }
                 switchApiKey();
             }
         } while (pageToken != null);
     }
+
+    private void handleSearchResults(List<SearchResult> searchResults, String channelName) {
+        for (SearchResult result : searchResults) {
+            String videoId = result.getId().getVideoId();
+            String title = result.getSnippet().getTitle().toLowerCase();
+
+            // 제목에 노래와 관련된 키워드가 포함되어 있는지 확인
+            if (isSongRelated(title)) {
+                Optional<VtuberSongsEntity> existingSongOpt = vtuberSongsRepository.findByVideoId(videoId);
+                if (!existingSongOpt.isPresent()) {
+                    saveNewSong(result, channelName, videoId); // videoId 전달
+                }
+            } else {
+                logger.info("노래와 관련 없는 동영상 필터링: " + title);
+            }
+        }
+    }
+
 
     private void handleSearchResults(List<SearchResult> searchResults, String channelName, LocalDateTime threeDaysAgo) {
         for (SearchResult result : searchResults) {
@@ -109,7 +145,6 @@ public class UpdateVtuberSongsService {
         song.setChannelId(result.getSnippet().getChannelId());
         song.setVideoId(result.getId().getVideoId());
         song.setTitle(result.getSnippet().getTitle());
-        song.setDescription(truncateDescription(result.getSnippet().getDescription()));
         song.setPublishedAt(Instant.ofEpochMilli(result.getSnippet().getPublishedAt().getValue())
                 .atZone(ZoneId.systemDefault()).toLocalDateTime());
         song.setAddedTime(LocalDateTime.now());
@@ -175,16 +210,29 @@ public class UpdateVtuberSongsService {
         return 0;  // 오류 발생시 0 반환
     }
 
-    private String truncateDescription(String description) {
-        return description.length() > 255 ? description.substring(0, 255) : description;
-    }
 
     private void switchApiKey() {
-        currentKeyIndex = (currentKeyIndex + 1) % apiKeys.size();
-        logger.info("Switched to next API key: " + apiKeys.get(currentKeyIndex));
+        int initialKeyIndex = currentKeyIndex;
+        do {
+            currentKeyIndex = (currentKeyIndex + 1) % apiKeys.size();
+            if (keyUsage.get(currentKeyIndex)) {
+                logger.info("API 키 전환: " + apiKeys.get(currentKeyIndex));
+                return;  // 사용 가능한 API 키를 찾으면 바로 반환
+            }
+        } while (currentKeyIndex != initialKeyIndex); // 모든 키를 순환했는지 확인
+
+        // 모든 키가 할당량을 초과한 경우
+        logger.severe("모든 API 키의 할당량이 소진됨. 작업을 중단합니다.");
+        throw new RuntimeException("모든 API 키의 할당량이 소진되었습니다.");
     }
 
-    @Scheduled(cron = "0 11 16 * * MON", zone = "Asia/Seoul")
+    private void resetKeyUsage() {
+        for (int i = 0; i < keyUsage.size(); i++) {
+            keyUsage.set(i, true); // 모든 키를 사용 가능하게 설정
+        }
+    }
+
+    @Scheduled(cron = "30 2 0 * * MON", zone = "Asia/Seoul")
     public void updateSongStatusToExisting() {
         // "new" 상태인 모든 곡을 찾아서 "existing"으로 상태 업데이트
         List<VtuberSongsEntity> newSongs = vtuberSongsRepository.findByStatus("new");
@@ -198,8 +246,9 @@ public class UpdateVtuberSongsService {
         logger.info("Updated " + newSongs.size() + " songs from 'new' to 'existing'.");
     }
 
-    @Scheduled(cron = "0 33 15 * * ?", zone = "Asia/Seoul") // 매일 특정 시간에 실행
+    @Scheduled(cron = "0 0 0 * * ?", zone = "Asia/Seoul") // 매일 특정 시간에 실행
     public void updateViewCounts() {
+        resetKeyUsage(); // API 키 사용 상태를 리셋
         List<VtuberSongsEntity> songs = vtuberSongsRepository.findAll(); // 모든 곡 조회
         for (VtuberSongsEntity song : songs) {
             long newViewCount = fetchViewCount(song.getVideoId()); // 유튜브 API로 조회수 가져오기
@@ -213,7 +262,7 @@ public class UpdateVtuberSongsService {
                 song.setUpdateDayTime(LocalDateTime.now()); // 조회수 갱신 시간 저장
 
                 // 주간 조회수 갱신은 월요일에만 수행
-                if (LocalDateTime.now().getDayOfWeek() == DayOfWeek.TUESDAY) {
+                if (LocalDateTime.now().getDayOfWeek() == DayOfWeek.MONDAY) {
                     // null 체크 후 기본값 0L로 설정
                     Long lastWeekViewCount = (song.getLastWeekViewCount() != null) ? song.getLastWeekViewCount() : 0L;
 
